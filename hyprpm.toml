@@ -1,0 +1,15 @@
+[repository]
+name = "hypr-appmenu"
+authors = ["memtable", "Alex Hulbert"]
+commit_pins = [
+    # Hyprland commit                         , hypr-appmenu commit
+    ["a0136d8c04687bb36eb8a28eb9d1ff92aea99704", "b5d41531dc2e16a766618b62fb5e5242dd933c4a"], # v0.55.4
+]
+
+[hypr-appmenu]
+description = "AppMenu Protocol Plugin for Hyprland"
+authors = ["memtable", "Alex Hulbert"]
+output = "hypr-appmenu.so"
+build = [
+    "make all"
+]

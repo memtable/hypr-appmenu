@@ -1,0 +1,4 @@
+*.o
+*.so
+appmenu-protocol.c
+appmenu-protocol.h
