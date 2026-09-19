@@ -1,3 +1,4 @@
+.DEFAULT_GOAL := all
 PLUGIN_NAME = hypr-appmenu
 
 WAYLAND_SCANNER = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
@@ -14,6 +15,8 @@ LIBS = $(shell pkg-config --libs libsystemd hyprland)
 
 OBJS = appMenuPlugin.o appmenu-protocol.o
 
+all: $(PLUGIN_NAME).so
+
 appmenu-protocol.h: appmenu.xml
 	$(WAYLAND_SCANNER) server-header appmenu.xml $@
 
@@ -28,8 +31,6 @@ appmenu-protocol.o: appmenu-protocol.c appmenu-protocol.h
 
 $(PLUGIN_NAME).so: $(OBJS)
 	$(CXX) $(CXXFLAGS) -shared -o $@ $(OBJS) $(LIBS)
-
-all: $(PLUGIN_NAME).so
 
 clean:
 	rm -f ./$(PLUGIN_NAME).so ./appmenuPlugin.so $(OBJS) appmenu-protocol.h appmenu-protocol.c
