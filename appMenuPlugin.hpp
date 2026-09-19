@@ -44,11 +44,11 @@ class CAppMenuManager {
     wl_event_source* m_pBusSource = nullptr;
 
   private:
-    bool ensureBus();
-    void initBus();
-    void cleanupBus();
-    void sendRegisterSurface(pid_t pid, const char* service_name, const char* object_path);
-    void sendUnregisterWindow(pid_t pid);
+    bool                                ensureBus();
+    void                                initBus();
+    void                                cleanupBus();
+    void                                sendRegisterSurface(pid_t pid, const char* service_name, const char* object_path);
+    void                                sendUnregisterWindow(pid_t pid);
 
     HANDLE                              m_pHandle = nullptr;
     std::unordered_map<pid_t, uint32_t> m_mPidSurfaceCount;

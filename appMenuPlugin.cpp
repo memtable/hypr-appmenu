@@ -18,7 +18,7 @@ struct wf_appmenu_surface {
     pid_t        pid                      = 0;
     std::string  service_name;
     std::string  object_path;
-    bool         registered               = false;
+    bool         registered = false;
 };
 
 static int onBusEvent(int fd, uint32_t mask, void* data) {
@@ -68,8 +68,7 @@ void CAppMenuManager::initBus() {
     if (!m_pBus)
         return;
 
-    int r = sd_bus_match_signal(m_pBus, &m_pBusSlot, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged",
-                                onNameOwnerChanged, this);
+    int r = sd_bus_match_signal(m_pBus, &m_pBusSlot, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged", onNameOwnerChanged, this);
     if (r < 0) {
         Log::logger->log(Log::WARN, "APPMENU: failed to add NameOwnerChanged match: {}", strerror(-r));
     }
@@ -146,8 +145,8 @@ void CAppMenuManager::sendUnregisterWindow(pid_t pid) {
         return;
 
     sd_bus_message* m = nullptr;
-    int             r = sd_bus_message_new_method_call(m_pBus, &m, "com.canonical.AppMenu.Registrar", "/com/canonical/AppMenu/Registrar", "com.canonical.AppMenu.Registrar",
-                                                       "UnregisterWindow");
+    int             r =
+        sd_bus_message_new_method_call(m_pBus, &m, "com.canonical.AppMenu.Registrar", "/com/canonical/AppMenu/Registrar", "com.canonical.AppMenu.Registrar", "UnregisterWindow");
     if (r >= 0) {
         sd_bus_message_append(m, "u", (uint32_t)pid);
         sd_bus_send(m_pBus, m, nullptr);
@@ -191,6 +190,13 @@ void CAppMenuManager::unregisterSurface(wf_appmenu_surface* surface) {
         if (it->second == 0) {
             m_mPidSurfaceCount.erase(it);
             sendUnregisterWindow(pid);
+        } else {
+            for (auto itSurf = m_vSurfaces.rbegin(); itSurf != m_vSurfaces.rend(); ++itSurf) {
+                if (*itSurf && (*itSurf)->registered && (*itSurf)->pid == pid && !(*itSurf)->service_name.empty() && !(*itSurf)->object_path.empty()) {
+                    sendRegisterSurface(pid, (*itSurf)->service_name.c_str(), (*itSurf)->object_path.c_str());
+                    break;
+                }
+            }
         }
     }
 }
@@ -240,14 +246,15 @@ static void handle_surface_destroy(wl_listener* listener, void* data) {
     wl_list_remove(&surface->surface_destroy_listener.link);
     wl_list_init(&surface->surface_destroy_listener.link);
 
-    if (surface->resource) {
-        wl_resource_destroy(surface->resource);
+    if (g_pAppMenuManager) {
+        g_pAppMenuManager->unregisterSurface(surface);
     }
 }
 
 static void handle_appmenu_destroy(wl_resource* resource) {
     auto* surface = static_cast<wf_appmenu_surface*>(wl_resource_get_user_data(resource));
     if (surface) {
+        wl_resource_set_user_data(resource, nullptr);
         surface->resource = nullptr;
 
         if (surface->wl_surface) {
@@ -267,7 +274,7 @@ static void handle_appmenu_destroy(wl_resource* resource) {
 
 static void handle_appmenu_set_address(wl_client* client, wl_resource* resource, const char* service_name, const char* object_path) {
     auto* surface = static_cast<wf_appmenu_surface*>(wl_resource_get_user_data(resource));
-    if (!surface)
+    if (!surface || !surface->wl_surface)
         return;
 
     pid_t pid = 0;
@@ -354,17 +361,25 @@ CAppMenuManager::~CAppMenuManager() {
         m_pGlobal = nullptr;
     }
 
+    if (ensureBus()) {
+        for (const auto& [pid, count] : m_mPidSurfaceCount) {
+            sendUnregisterWindow(pid);
+        }
+    }
+    m_mPidSurfaceCount.clear();
+    m_vSurfaces.clear();
+
     auto appMenuResources = m_vAppMenuResources;
+    m_vAppMenuResources.clear();
     for (auto* res : appMenuResources) {
         wl_resource_destroy(res);
     }
-    m_vAppMenuResources.clear();
 
     auto managerResources = m_vManagerResources;
+    m_vManagerResources.clear();
     for (auto* res : managerResources) {
         wl_resource_destroy(res);
     }
-    m_vManagerResources.clear();
 
     cleanupBus();
 }
