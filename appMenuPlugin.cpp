@@ -6,6 +6,10 @@
 #include <poll.h>
 #include <algorithm>
 
+#ifndef LOG
+#define LOG(level, ...) Log::logger->log(level, __VA_ARGS__)
+#endif
+
 #define APICALL extern "C"
 #define EXPORT  __attribute__((visibility("default")))
 
@@ -37,7 +41,7 @@ static int onNameOwnerChanged(sd_bus_message* m, void* userdata, sd_bus_error* r
     int         r         = sd_bus_message_read(m, "sss", &name, &old_owner, &new_owner);
     if (r >= 0 && name && strcmp(name, "com.canonical.AppMenu.Registrar") == 0) {
         if (new_owner && strlen(new_owner) > 0) {
-            Log::logger->log(Log::DEBUG, "APPMENU: com.canonical.AppMenu.Registrar appeared (owner: {}), re-registering surfaces", new_owner);
+            LOG(Log::DEBUG, "APPMENU: com.canonical.AppMenu.Registrar appeared (owner: {}), re-registering surfaces", new_owner);
             auto* mgr = static_cast<CAppMenuManager*>(userdata);
             if (mgr)
                 mgr->reRegisterAllSurfaces();
@@ -55,7 +59,7 @@ bool CAppMenuManager::ensureBus() {
 
     int r = sd_bus_open_user(&m_pBus);
     if (r < 0) {
-        Log::logger->log(Log::ERR, "APPMENU: failed to open user dbus connection: {}", strerror(-r));
+        LOG(Log::ERR, "APPMENU: failed to open user dbus connection: {}", strerror(-r));
         m_pBus = nullptr;
         return false;
     }
@@ -70,7 +74,7 @@ void CAppMenuManager::initBus() {
 
     int r = sd_bus_match_signal(m_pBus, &m_pBusSlot, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged", onNameOwnerChanged, this);
     if (r < 0) {
-        Log::logger->log(Log::WARN, "APPMENU: failed to add NameOwnerChanged match: {}", strerror(-r));
+        LOG(Log::WARN, "APPMENU: failed to add NameOwnerChanged match: {}", strerror(-r));
     }
 
     int fd = sd_bus_get_fd(m_pBus);
@@ -282,7 +286,7 @@ static void handle_appmenu_set_address(wl_client* client, wl_resource* resource,
     gid_t gid = 0;
     wl_client_get_credentials(client, &pid, &uid, &gid);
 
-    Log::logger->log(Log::DEBUG, "APPMENU: set_address from pid {} with service: {} path: {}", pid, service_name, object_path);
+    LOG(Log::DEBUG, "APPMENU: set_address from pid {} with service: {} path: {}", pid, service_name, object_path);
 
     if (g_pAppMenuManager)
         g_pAppMenuManager->registerSurface(surface, pid, service_name, object_path);
@@ -303,7 +307,7 @@ static void handle_appmenu_manager_create(wl_client* client, wl_resource* resour
     appmenu_surface->resource   = wl_resource_create(client, &org_kde_kwin_appmenu_interface, wl_resource_get_version(resource), id);
 
     if (!appmenu_surface->resource) {
-        Log::logger->log(Log::ERR, "APPMENU: failed to create appmenu resource");
+        LOG(Log::ERR, "APPMENU: failed to create appmenu resource");
         wl_client_post_no_memory(client);
         delete appmenu_surface;
         return;
@@ -342,7 +346,7 @@ static void bind_appmenu(wl_client* client, void* data, uint32_t version, uint32
     auto* resource = wl_resource_create(client, &org_kde_kwin_appmenu_manager_interface, version, id);
 
     if (!resource) {
-        Log::logger->log(Log::ERR, "APPMENU: failed to create manager resource");
+        LOG(Log::ERR, "APPMENU: failed to create manager resource");
         wl_client_post_no_memory(client);
         return;
     }
@@ -385,18 +389,18 @@ CAppMenuManager::~CAppMenuManager() {
 }
 
 void CAppMenuManager::init() {
-    Log::logger->log(Log::DEBUG, "APPMENU: initializing manager");
+    LOG(Log::DEBUG, "APPMENU: initializing manager");
 
     ensureBus();
 
     m_pGlobal = wl_global_create(g_pCompositor->m_wlDisplay, &org_kde_kwin_appmenu_manager_interface, 2, nullptr, bind_appmenu);
 
     if (!m_pGlobal) {
-        Log::logger->log(Log::ERR, "APPMENU: failed to create global!");
+        LOG(Log::ERR, "APPMENU: failed to create global!");
         return;
     }
 
-    Log::logger->log(Log::DEBUG, "APPMENU: manager initialized successfully");
+    LOG(Log::DEBUG, "APPMENU: manager initialized successfully");
 }
 
 APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
@@ -418,7 +422,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
-    Log::logger->log(Log::DEBUG, "APPMENU: plugin shutting down");
+    LOG(Log::DEBUG, "APPMENU: plugin shutting down");
     g_pAppMenuManager.reset();
 }
 
