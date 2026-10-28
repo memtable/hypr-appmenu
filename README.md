@@ -3,7 +3,7 @@
 Hyprland plugin providing the `org_kde_kwin_appmenu` Wayland protocol. It forwards application menu paths to the D-Bus AppMenu registrar (`com.canonical.AppMenu.Registrar`).
 
 <div align="center">
-  <img width="857" height="536" alt="showcase" src="https://github.com/user-attachments/assets/d32ca749-e5d4-42e3-9f52-3f43f5eacd25" />
+<img width="90%" alt="showcase" src="https://github.com/user-attachments/assets/44bf4acc-44b8-41ed-8ce8-51e7ec5a1a61" />
 </div>
 
 ## Installation
