@@ -4,6 +4,7 @@ authors = ["memtable", "Alex Hulbert"]
 commit_pins = [
     # Hyprland commit                         , hypr-appmenu commit
     ["a0136d8c04687bb36eb8a28eb9d1ff92aea99704", "d7455e4ca57d1d5d5d128cc6d11168ea757ce801"], # v0.55.4
+    ["0aa6745f705f2c4b0a5004eb019ef76e5bbdb426", "03c5f2e087a1ca3575e31afad612dc17e86948d7"], # v0.57.0
 ]
 
 [hypr-appmenu]
