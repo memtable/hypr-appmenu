@@ -1,8 +1,14 @@
 #include "appMenuPlugin.hpp"
 #include "appmenu-protocol.h"
 
+#include <hyprland/src/event/EventBus.hpp>
+#include <hyprland/src/protocols/core/Compositor.hpp>
+#include <hyprland/src/desktop/view/window/WindowBackend.hpp>
+#include <hyprland/src/helpers/Color.hpp>
+
 #include <unistd.h>
-#include <string.h>
+#include <cstring>
+#include <cerrno>
 #include <poll.h>
 #include <algorithm>
 
@@ -72,7 +78,10 @@ void CAppMenuManager::initBus() {
     if (!m_pBus)
         return;
 
-    int r = sd_bus_match_signal(m_pBus, &m_pBusSlot, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged", onNameOwnerChanged, this);
+    int r = sd_bus_add_match(m_pBus, &m_pBusSlot,
+                             "type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',"
+                             "interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='com.canonical.AppMenu.Registrar'",
+                             onNameOwnerChanged, this);
     if (r < 0) {
         LOG(Log::WARN, "APPMENU: failed to add NameOwnerChanged match: {}", strerror(-r));
     }
@@ -137,8 +146,9 @@ void CAppMenuManager::sendRegisterSurface(pid_t pid, const char* service_name, c
         sd_bus_message_new_method_call(m_pBus, &m, "com.canonical.AppMenu.Registrar", "/com/canonical/AppMenu/Registrar", "com.canonical.AppMenu.Registrar", "RegisterSurfaceMenu");
     if (r >= 0) {
         sd_bus_message_append(m, "uss", (uint32_t)pid, service_name, object_path);
-        sd_bus_send(m_pBus, m, nullptr);
-        sd_bus_flush(m_pBus);
+        r = sd_bus_send(m_pBus, m, nullptr);
+        if (r < 0)
+            LOG(Log::DEBUG, "APPMENU: failed to send RegisterSurfaceMenu: {}", strerror(-r));
         sd_bus_message_unref(m);
         updateBusEventSource();
     }
@@ -153,8 +163,9 @@ void CAppMenuManager::sendUnregisterWindow(pid_t pid) {
         sd_bus_message_new_method_call(m_pBus, &m, "com.canonical.AppMenu.Registrar", "/com/canonical/AppMenu/Registrar", "com.canonical.AppMenu.Registrar", "UnregisterWindow");
     if (r >= 0) {
         sd_bus_message_append(m, "u", (uint32_t)pid);
-        sd_bus_send(m_pBus, m, nullptr);
-        sd_bus_flush(m_pBus);
+        r = sd_bus_send(m_pBus, m, nullptr);
+        if (r < 0)
+            LOG(Log::DEBUG, "APPMENU: failed to send UnregisterWindow: {}", strerror(-r));
         sd_bus_message_unref(m);
         updateBusEventSource();
     }
@@ -188,6 +199,12 @@ void CAppMenuManager::unregisterSurface(wf_appmenu_surface* surface) {
     pid_t pid           = surface->pid;
     surface->registered = false;
 
+    if (pid == m_lastFocusedPid) {
+        m_lastFocusedPid = 0;
+        m_lastFocusedService.clear();
+        m_lastFocusedPath.clear();
+    }
+
     auto it = m_mPidSurfaceCount.find(pid);
     if (it != m_mPidSurfaceCount.end()) {
         it->second--;
@@ -210,10 +227,67 @@ void CAppMenuManager::reRegisterAllSurfaces() {
         return;
 
     std::unordered_set<pid_t> sentPids;
-    for (auto* surface : m_vSurfaces) {
+    for (auto it = m_vSurfaces.rbegin(); it != m_vSurfaces.rend(); ++it) {
+        auto* surface = *it;
         if (surface && surface->registered && surface->pid > 0 && !surface->service_name.empty() && !surface->object_path.empty()) {
             if (sentPids.insert(surface->pid).second) {
                 sendRegisterSurface(surface->pid, surface->service_name.c_str(), surface->object_path.c_str());
+            }
+        }
+    }
+}
+
+void CAppMenuManager::onWindowFocus(PHLWINDOW pWindow) {
+    if (!pWindow) {
+        m_lastFocusedPid = 0;
+        m_lastFocusedService.clear();
+        m_lastFocusedPath.clear();
+        return;
+    }
+
+    wl_resource* surfaceRes = nullptr;
+    if (pWindow->resource() && pWindow->resource()->getResource())
+        surfaceRes = pWindow->resource()->getResource()->resource();
+
+    // 1. Try exact surface match first (handles multi-window single-PID apps)
+    if (surfaceRes) {
+        for (auto it = m_vSurfaces.rbegin(); it != m_vSurfaces.rend(); ++it) {
+            auto* surface = *it;
+            if (surface && surface->registered && surface->wl_surface == surfaceRes) {
+                if (!surface->service_name.empty() && !surface->object_path.empty()) {
+                    if (surface->pid == m_lastFocusedPid && surface->service_name == m_lastFocusedService && surface->object_path == m_lastFocusedPath)
+                        return;
+
+                    m_lastFocusedPid     = surface->pid;
+                    m_lastFocusedService = surface->service_name;
+                    m_lastFocusedPath    = surface->object_path;
+
+                    LOG(Log::DEBUG, "APPMENU: focus switched to surface {:x} (PID {}), re-registering menu", (uintptr_t)surfaceRes, surface->pid);
+                    sendRegisterSurface(surface->pid, surface->service_name.c_str(), surface->object_path.c_str());
+                }
+                return;
+            }
+        }
+    }
+
+    // 2. Fallback to PID match if surface was not directly mapped (e.g. XWayland or indirect window)
+    pid_t pid = pWindow->backend().pid();
+    if (pid > 0) {
+        for (auto it = m_vSurfaces.rbegin(); it != m_vSurfaces.rend(); ++it) {
+            auto* surface = *it;
+            if (surface && surface->registered && surface->pid == pid) {
+                if (!surface->service_name.empty() && !surface->object_path.empty()) {
+                    if (surface->pid == m_lastFocusedPid && surface->service_name == m_lastFocusedService && surface->object_path == m_lastFocusedPath)
+                        return;
+
+                    m_lastFocusedPid     = surface->pid;
+                    m_lastFocusedService = surface->service_name;
+                    m_lastFocusedPath    = surface->object_path;
+
+                    LOG(Log::DEBUG, "APPMENU: focus switched to window PID {}, re-registering newest menu", pid);
+                    sendRegisterSurface(surface->pid, surface->service_name.c_str(), surface->object_path.c_str());
+                }
+                return;
             }
         }
     }
@@ -360,6 +434,8 @@ static void bind_appmenu(wl_client* client, void* data, uint32_t version, uint32
 CAppMenuManager::CAppMenuManager() {}
 
 CAppMenuManager::~CAppMenuManager() {
+    m_activeWindowListener.reset();
+
     if (m_pGlobal) {
         wl_global_destroy(m_pGlobal);
         m_pGlobal = nullptr;
@@ -369,6 +445,7 @@ CAppMenuManager::~CAppMenuManager() {
         for (const auto& [pid, count] : m_mPidSurfaceCount) {
             sendUnregisterWindow(pid);
         }
+        sd_bus_flush(m_pBus);
     }
     m_mPidSurfaceCount.clear();
     m_vSurfaces.clear();
@@ -392,6 +469,8 @@ void CAppMenuManager::init() {
     LOG(Log::DEBUG, "APPMENU: initializing manager");
 
     ensureBus();
+
+    m_activeWindowListener = Event::bus()->m_events.window.active.listen([this](PHLWINDOW pWindow, Desktop::eFocusReason) { onWindowFocus(pWindow); });
 
     m_pGlobal = wl_global_create(g_pCompositor->m_wlDisplay, &org_kde_kwin_appmenu_manager_interface, 2, nullptr, bind_appmenu);
 

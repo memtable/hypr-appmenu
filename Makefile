@@ -1,6 +1,8 @@
 .DEFAULT_GOAL := all
 PLUGIN_NAME = hypr-appmenu
 
+export PKG_CONFIG_PATH := /usr/local/share/pkgconfig:/usr/local/lib/pkgconfig:$(PKG_CONFIG_PATH)
+
 WAYLAND_SCANNER = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
 
 ifeq ($(CXX),g++)

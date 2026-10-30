@@ -3,7 +3,7 @@
 #include <hyprland/src/plugins/PluginAPI.hpp>
 #include <hyprland/src/Compositor.hpp>
 #include <hyprland/src/debug/log/Logger.hpp>
-#include <hyprland/src/helpers/Color.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
 
 #include <systemd/sd-bus.h>
 #include <unordered_map>
@@ -22,6 +22,7 @@ class CAppMenuManager {
     void       registerSurface(wf_appmenu_surface* surface, pid_t pid, const char* service_name, const char* object_path);
     void       unregisterSurface(wf_appmenu_surface* surface);
     void       reRegisterAllSurfaces();
+    void       onWindowFocus(PHLWINDOW pWindow);
 
     void       addSurface(wf_appmenu_surface* surface);
     void       removeSurface(wf_appmenu_surface* surface);
@@ -50,11 +51,14 @@ class CAppMenuManager {
     void                                sendRegisterSurface(pid_t pid, const char* service_name, const char* object_path);
     void                                sendUnregisterWindow(pid_t pid);
 
-    HANDLE                              m_pHandle = nullptr;
     std::unordered_map<pid_t, uint32_t> m_mPidSurfaceCount;
     std::vector<wf_appmenu_surface*>    m_vSurfaces;
     std::vector<wl_resource*>           m_vManagerResources;
     std::vector<wl_resource*>           m_vAppMenuResources;
+    CHyprSignalListener                 m_activeWindowListener;
+    pid_t                               m_lastFocusedPid = 0;
+    std::string                         m_lastFocusedService;
+    std::string                         m_lastFocusedPath;
 };
 
 inline std::unique_ptr<CAppMenuManager> g_pAppMenuManager;
