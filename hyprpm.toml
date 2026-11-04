@@ -5,6 +5,7 @@ commit_pins = [
     # Hyprland commit                         , hypr-appmenu commit
     ["a0136d8c04687bb36eb8a28eb9d1ff92aea99704", "d7455e4ca57d1d5d5d128cc6d11168ea757ce801"], # v0.55.4
     ["0aa6745f705f2c4b0a5004eb019ef76e5bbdb426", "706a43f6708b8a2de79295d6b5efae98083c4f80"], # v0.57.0
+    ["acc1aa0bfd4bd575dcb0f76c35ccf12b660a1ab9", "59fa9371d3fa24b648429fa32b32b3dea75110f4"], # v0.57.1
 ]
 
 [hypr-appmenu]
